@@ -1,0 +1,17 @@
+{
+  "predicted_next_hour": 1.34,
+  "predicted_daily_total": 8.72,
+  "confidence_score": 0.87,
+  "model_version": "mock-v1",
+  "generated_at": "2026-02-26T18:00:00.000Z",
+  "breakdown": {
+    "appliances": [
+      { "name": "HVAC", "predicted_kwh": 3.2 },
+      { "name": "Lighting", "predicted_kwh": 1.1 },
+      { "name": "Refrigerator", "predicted_kwh": 1.8 },
+      { "name": "Other", "predicted_kwh": 2.62 }
+    ]
+  },
+  "trend": "rising",
+  "alert": "Predicted usage 12% above daily average"
+}

@@ -1,0 +1,84 @@
+.alerts-panel {}
+
+.alerts-panel__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-4);
+}
+
+.alerts-panel__title {
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.alerts-panel__count {
+    font-size: 0.72rem;
+    font-weight: 700;
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--color-danger);
+    border-radius: var(--radius-full);
+    padding: 2px 8px;
+}
+
+.alerts-panel__empty {
+    color: var(--color-text-muted);
+    font-size: 0.85rem;
+}
+
+.alerts-panel__list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.alert-item {
+    display: flex;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border-radius: var(--radius-sm);
+    border-left: 3px solid transparent;
+}
+
+.alert-item--danger {
+    background: rgba(239, 68, 68, 0.08);
+    border-left-color: var(--color-danger);
+}
+
+.alert-item--warning {
+    background: rgba(245, 158, 11, 0.08);
+    border-left-color: var(--color-warning);
+}
+
+.alert-item--info {
+    background: rgba(37, 99, 235, 0.08);
+    border-left-color: var(--color-primary-500);
+}
+
+.alert-item__icon {
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.alert-item--danger .alert-item__icon {
+    color: var(--color-danger);
+}
+
+.alert-item--warning .alert-item__icon {
+    color: var(--color-warning);
+}
+
+.alert-item--info .alert-item__icon {
+    color: var(--color-primary-400);
+}
+
+.alert-item__message {
+    font-size: 0.82rem;
+    color: var(--color-text-primary);
+    margin-bottom: 2px;
+}
+
+.alert-item__time {
+    font-size: 0.7rem;
+    color: var(--color-text-muted);
+}
