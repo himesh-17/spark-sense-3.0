@@ -4,22 +4,40 @@ const { subHours, subDays, startOfDay, endOfDay } = require('date-fns');
 
 /**
  * GET /api/analytics/live
- * Returns the most recent reading for a device
+ * Returns the most recent reading for a device.
+ * If no reading exists yet, returns a simulated baseline so the
+ * frontend always has data to display.
  */
 const getLive = async (req, res, next) => {
     try {
         const { deviceId = 'ESP32-001' } = req.query;
         const reading = await getLatestReading(deviceId);
 
-        if (!reading) {
-            return res.status(404).json({ success: false, message: 'No readings found' });
+        if (reading) {
+            return res.json({ success: true, data: reading });
         }
 
-        res.json({ success: true, data: reading });
+        // No data yet — return a labelled simulation so the UI isn't empty
+        const simulated = {
+            deviceId,
+            voltage:    230.0 + (Math.random() - 0.5) * 6,
+            current:    4.2   + (Math.random() - 0.5) * 0.6,
+            power:      null,   // will be filled below
+            energy_kwh: 5.8,
+            powerFactor: 0.92,
+            timestamp:  new Date(),
+            _simulated: true,
+        };
+        simulated.power = parseFloat((simulated.voltage * simulated.current).toFixed(1));
+        simulated.voltage = parseFloat(simulated.voltage.toFixed(1));
+        simulated.current = parseFloat(simulated.current.toFixed(2));
+
+        return res.json({ success: true, data: simulated, _source: 'simulated' });
     } catch (err) {
         next(err);
     }
 };
+
 
 /**
  * GET /api/analytics/hourly?deviceId&from&to

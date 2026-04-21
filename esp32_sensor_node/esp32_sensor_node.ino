@@ -1,93 +1,119 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 
-// ----------------------------------------------------------------------------
-// CONFIGURATION
-// ----------------------------------------------------------------------------
-const char* WIFI_SSID     = "YOUR_WIFI_SSID";
-const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+// ---------------- WIFI CONFIG ----------------
+const char* WIFI_SSID     = "Mk";
+const char* WIFI_PASSWORD = "manaskukreja";
+const char* SERVER_URL    = "http://10.254.50.151:5000/api/readings";  // ← Your PC's IP
 
-// Your backend server IP and port (e.g., http://192.168.1.100:5000/api/readings)
-const String SERVER_URL   = "http://YOUR_SERVER_IP:5000/api/readings";
+const String DEVICE_ID = "ESP32-001";
 
-// Device identifier
-const String DEVICE_ID    = "ESP32-001";
+// ---------------- PINS ----------------
+#define VOLTAGE_PIN 34
+#define CURRENT_PIN 35
+#define RELAY_PIN   25
 
-// Reading interval in milliseconds
-const unsigned long INTERVAL = 5000;
-unsigned long lastReadingTime = 0;
+// ---------------- VARIABLES ----------------
+unsigned long INTERVAL = 5000;     // ms between readings
+unsigned long lastTime = 0;
 
-// ----------------------------------------------------------------------------
-// SETUP
-// ----------------------------------------------------------------------------
+float energy = 0;                  // cumulative kWh
+
+// ---------------- SETUP ----------------
 void setup() {
   Serial.begin(115200);
-  delay(10);
-  
-  // Connect to WiFi
-  Serial.println("\nConnecting to WiFi...");
+
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, LOW);   // relay OFF initially
+
+  analogReadResolution(12);       // 12-bit ADC (0–4095)
+
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  
+  Serial.print("Connecting WiFi");
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
-  
-  Serial.println("\nWiFi connected!");
-  Serial.print("IP Address: ");
-  Serial.println(WiFi.localIP());
+  Serial.println("\nConnected! IP = " + WiFi.localIP().toString());
 }
 
-// ----------------------------------------------------------------------------
-// MAIN LOOP
-// ----------------------------------------------------------------------------
+// ---------------- RMS HELPER ----------------
+// Reads ~800 samples, removes DC offset, returns RMS ADC count
+float readRMS(int pin) {
+  const int samples = 800;
+  long offset = 0;
+
+  for (int i = 0; i < samples; i++) {
+    offset += analogRead(pin);
+  }
+  offset /= samples;
+
+  long sumSq = 0;
+  for (int i = 0; i < samples; i++) {
+    long val = analogRead(pin) - offset;
+    sumSq += val * val;
+  }
+  return sqrt((float)sumSq / samples);
+}
+
+// ---------------- MAIN LOOP ----------------
 void loop() {
-  unsigned long currentMillis = millis();
-  
-  // Send data strictly at the required interval
-  if (currentMillis - lastReadingTime >= INTERVAL) {
-    lastReadingTime = currentMillis;
-    
-    // 1. Read sensor data (Replace with actual sensor code like INA219 or PZEM)
-    // Here we generate simulated values around expected baselines.
-    float voltage = random(2200, 2400) / 10.0;   // 220.0 to 240.0 V
-    float current = random(10, 50) / 10.0;       // 1.0 to 5.0 A
-    float power = voltage * current;             // Watts
-    float energy = power * (INTERVAL / 3600000.0); // Simple energy diff integration
-    float pf = random(85, 99) / 100.0;           // Power factor 0.85 to 0.99
-    
-    // 2. Prepare JSON payload
-    String payload = "{";
-    payload += "\"deviceId\":\"" + DEVICE_ID + "\",";
-    payload += "\"voltage\":" + String(voltage, 2) + ",";
-    payload += "\"current\":" + String(current, 2) + ",";
-    payload += "\"power\":" + String(power, 2) + ",";
-    payload += "\"energy\":" + String(energy, 4) + ",";
-    payload += "\"powerFactor\":" + String(pf, 2);
-    payload += "}";
-    
-    // 3. Send HTTP POST request
+  if (millis() - lastTime >= INTERVAL) {
+    lastTime = millis();
+
+    // ------- READ SENSORS -------
+    float vRMS = readRMS(VOLTAGE_PIN);
+    float cRMS = readRMS(CURRENT_PIN);
+
+    // ------- CALIBRATION (tune these factors for your hardware) -------
+    float voltage = vRMS * 0.08;    // adjust multiplier to match real voltage
+    float current = cRMS * 0.001;   // adjust multiplier to match real current
+
+    float power = voltage * current;
+
+    // Accumulate energy (kWh) for this interval
+    energy += power * (INTERVAL / 3600000.0);
+
+    // ------- DEBUG -------
+    Serial.println("================================");
+    Serial.print("Voltage: "); Serial.print(voltage); Serial.println(" V");
+    Serial.print("Current: "); Serial.print(current); Serial.println(" A");
+    Serial.print("Power:   "); Serial.print(power);   Serial.println(" W");
+    Serial.print("Energy:  "); Serial.print(energy);  Serial.println(" kWh");
+    Serial.println("================================");
+
+    // ------- RELAY CONTROL -------
+    digitalWrite(RELAY_PIN, (power > 50) ? HIGH : LOW);
+
+    // ------- POST TO DASHBOARD -------
     if (WiFi.status() == WL_CONNECTED) {
       HTTPClient http;
       http.begin(SERVER_URL);
       http.addHeader("Content-Type", "application/json");
-      
-      Serial.println("Sending: " + payload);
-      int httpResponseCode = http.POST(payload);
-      
-      if (httpResponseCode > 0) {
-        Serial.print("HTTP Response code: ");
-        Serial.println(httpResponseCode);
-        String response = http.getString();
-        Serial.println("Server Response: " + response);
-      } else {
-        Serial.print("Error code: ");
-        Serial.println(httpResponseCode);
+
+      // Build JSON payload — field names match backend schema
+      String payload = "{";
+      payload += "\"deviceId\":\"" + DEVICE_ID + "\",";
+      payload += "\"voltage\":"    + String(voltage, 2) + ",";
+      payload += "\"current\":"    + String(current, 3) + ",";
+      payload += "\"power\":"      + String(power,   2) + ",";
+      payload += "\"energy\":"     + String(energy,  4);   // backend accepts 'energy'
+      payload += "}";
+
+      int httpCode = http.POST(payload);
+
+      Serial.print("HTTP Response: ");
+      Serial.println(httpCode);
+      if (httpCode == 201) {
+        Serial.println("✓ Reading saved to dashboard!");
+      } else if (httpCode < 0) {
+        Serial.println("! Connection failed. Check server IP.");
       }
-      
+
       http.end();
     } else {
-      Serial.println("WiFi Disconnected. Attempting to reconnect...");
+      // WiFi dropped — try to reconnect
+      Serial.println("WiFi lost, reconnecting...");
       WiFi.disconnect();
       WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     }
